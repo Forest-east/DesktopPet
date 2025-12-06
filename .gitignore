@@ -1,0 +1,14 @@
+# Visual Studio 临时文件和编译输出
+[Dd]ebug/
+[Rr]elease/
+[Bb]uild/
+*.vcxproj.user
+*.sln.docstates
+*.exe
+*.ilk
+*.pdb
+*.obj
+
+# 系统文件
+.DS_Store
+Thumbs.db
