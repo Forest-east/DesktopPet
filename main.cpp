@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 #include <sstream>
+#include <conio.h>
 
 #define N 9
 
@@ -62,14 +63,24 @@ static DWORD lastTime = clock();
 const int targetFPS = 60;
 const int frameDelay = 1000 / targetFPS;
 
+// ========== 【配置区】 ==========皮卡丘敲键盘
+const int TOTAL_FRAMES = 5;         // 图片总张数
+const int ANIMATION_SPEED = 2;       // 动画速度
 
+// 全局变量皮卡丘敲键盘
+IMAGE imgFrames[10];               // 存储图片
+enum AnimState { STATE_IDLE, STATE_PLAYING };
+AnimState currentState;
+int currentFrame;
+int delayCounter;
+bool keyProcessed;
 void GetScreenSize(int* width,int* height)
 {
 	*width = GetSystemMetrics(SM_CXSCREEN);
 	*height = GetSystemMetrics(SM_CYSCREEN);
 }
 
-void InitPet()
+ void InitPet()
 {
 	GetScreenSize(&win.width, &win.height);
 	pet.width = 113;
@@ -85,7 +96,7 @@ void InitPet()
 	pet.offY = 0;
 	pet.Speed = 400;
 	pet.frameDelay = 1000 / 60;
-
+	
 }
 
 void InitWindow()
@@ -114,6 +125,14 @@ void LoadPetImages(Pet* pet)
 		swprintf_s(path, L"Frame%d.png", index + 1);
 		loadimage(&pet->relaxImg[index], path, pet->width, pet->height);
 	}
+
+	for (int i = 0; i < TOTAL_FRAMES; i++) {
+		wchar_t  filename[30];
+
+		swprintf_s(filename, L"pikachu_%02d.png", i + 1);
+
+		loadimage(&imgFrames[i], filename);  
+	}     
 }
 
 void HandleDragging(Pet* pet, MOUSEMSG msg)
@@ -161,6 +180,58 @@ void HandleDragging(Pet* pet, MOUSEMSG msg)
 	}
 }
 
+// 1. 加载所有pikachu敲键盘图片 
+
+
+// 2. 更新pikachu敲键盘动画逻辑
+void UpdateAnimation() {
+	bool spaceKeyDown = (GetAsyncKeyState(VK_SPACE) & 0x8000) != 0;
+
+	if (currentState == STATE_IDLE) {
+		if (spaceKeyDown && !keyProcessed) {
+			currentState = STATE_PLAYING;
+			currentFrame = 0;
+			delayCounter = 0;
+			keyProcessed = true;
+			printf("> 开始播放动画\n");
+		}
+	}
+	else if (currentState == STATE_PLAYING) {
+		delayCounter++;
+
+		if (delayCounter >= ANIMATION_SPEED) {
+			delayCounter = 0;
+			currentFrame++;
+
+			if (currentFrame >= TOTAL_FRAMES) {
+				currentState = STATE_IDLE;
+				currentFrame = 0;
+				printf("> 动画播放完毕\n");
+			}
+		}
+	}
+
+	if (!spaceKeyDown) {
+		keyProcessed = false;
+	}
+}
+
+// 3. 绘制pikachu敲键盘当前画面 (白色背景)
+void DrawCurrentFrame() {
+	// 清屏为白色
+	cleardevice();
+
+	// 获取当前图片尺寸
+	int imgW = imgFrames[currentFrame].getwidth();
+	int imgH = imgFrames[currentFrame].getheight();
+	     
+	// 跟随
+	int drawX = pet.x;
+	int drawY = pet.y;
+
+	// 使用最简单的3参数putimage (完全兼容)
+	putimage(drawX, drawY, &imgFrames[currentFrame]);
+}
 
 
 //void LoadImages()
@@ -220,45 +291,7 @@ void HandleDragging(Pet* pet, MOUSEMSG msg)
 //}
 
 
-////测试函数，正式版删除，按下1-6可显示对应6种图像
-//void Test()
-//{
-//    if (GetAsyncKeyState('1') & 0x8000)
-//    {
-//        pet.state = NORMAL;
-//        pet.stateTimer = 0;
-//    }
-//
-//    if (GetAsyncKeyState('2') & 0x8000)
-//    {
-//        pet.state = SLEEP;
-//        pet.stateTimer = 0;
-//    }
-//
-//    if (GetAsyncKeyState('3') & 0x8000)
-//    {
-//        pet.state = CLICK;
-//        pet.stateTimer = 0;
-//    }
-//
-//    if (GetAsyncKeyState('4') & 0x8000)
-//    {
-//        pet.state = LONGPRESS;
-//        pet.stateTimer = 0;
-//    }
-//
-//    if (GetAsyncKeyState('5') & 0x8000)
-//    {
-//        pet.state = DRAG;
-//        pet.stateTimer = 0;
-//    }
-//
-//    if (GetAsyncKeyState('6') & 0x8000)
-//    {
-//        pet.state = KEYBOARD;
-//        pet.stateTimer = 0;
-//    }
-//}
+
 
 
 
@@ -268,7 +301,7 @@ int main()
 	InitWindow();
 
 	LoadPetImages(&pet);
-
+	
 	while (true)
 	{
 
@@ -279,13 +312,16 @@ int main()
 			MOUSEMSG msg = GetMouseMsg();
 			HandleDragging(&pet, msg);
 		}
+		
 
-		// 双缓冲开始
-		BeginBatchDraw();
+		// 双缓冲开始 
+		UpdateAnimation();   
+		BeginBatchDraw();  
+		 
 
 		// 清屏
 		cleardevice();
-
+		DrawCurrentFrame();                
 		// 根据状态绘制宠物
 		if (pet.isDragging)
 		{
@@ -309,6 +345,8 @@ int main()
 		EndBatchDraw();
 	}
 	
+	
+
 	closegraph();
 	return 0;
 }
