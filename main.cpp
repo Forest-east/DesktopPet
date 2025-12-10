@@ -1,4 +1,4 @@
-#include <graphics.h>
+ï»¿#include <graphics.h>
 #include <windows.h>
 #include <stdio.h>
 #include <time.h>
@@ -27,12 +27,12 @@ typedef struct
 
 typedef struct
 {
-	int height, width;
-	HWND hwnd;
+    int height, width;
+    HWND hwnd;
 }Window;
 
-Pet pet;
 Window win;
+Pet pet;
 IMAGE imgNormal;
 IMAGE imgSleep;
 IMAGE imgClick;
@@ -40,43 +40,44 @@ IMAGE imgDrag;
 IMAGE imgLongpress;
 IMAGE imgKeyboard;
 
+void GetScreenSize(int* width,int* height)
+{
+	*width = GetSystemMetrics(SM_CXSCREEN);
+	*height = GetSystemMetrics(SM_CYSCREEN);
+}
+
 void InitPet()
 {
-	pet.x = 400;
-	pet.y = 300;
+	GetScreenSize(&win.width, &win.height);
 	pet.width = 200;
 	pet.height = 200;
+	pet.x = win.width - pet.width;
+	pet.y = win.height - pet.height;
 	pet.state = NORMAL;
 	pet.stateTimer = 0;
 }
 
 void InitWindow()
 {
-	win.height = 300;
-	win.width = 400;
-	initgraph(400, 300,EX_NOCLOSE|EX_NOMINIMIZE);
-	win.hwnd = GetHWnd();
-	//ÉèÖÃÎŞ±ß¿ò
-	SetWindowLongPtrA(win.hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
-	//ÉèÖÃ´°¿ÚÍ¸Ã÷
-	//1.ÉèÖÃ·Ö²ã´°¿Ú
-	SetWindowLongPtrA(win.hwnd, GWL_EXSTYLE,
-		GetWindowLongPtrA(win.hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);
-	//2.ÉèÖÃÍ¸Ã÷É«£¬Ìî³äÍ¸Ã÷É«
-	SetLayeredWindowAttributes(win.hwnd, RGB(1,1,1), 0, LWA_COLORKEY);
-	setbkcolor(RGB(1,1,1));//ÓÃ²»³£ÓÃÑÕÉ«×÷ÎªÍ¸Ã÷É«
-	cleardevice();
-	//ÒÆ¶¯´°¿ÚÖÁÆÁÄ»ÓÒÏÂ½Ç
-	int screenWidth = GetSystemMetrics(SM_CXFULLSCREEN);
-	int screenHeight = GetSystemMetrics(SM_CYFULLSCREEN);
-	int x = screenWidth - win.width;
-	int y = screenHeight - win.height;
-	MoveWindow(win.hwnd, x, y, 400, 300, TRUE);
-	//´°¿ÚÖÃ¶¥
-	SetWindowPos(win.hwnd, HWND_TOPMOST, x, y, 400, 300, SWP_NOMOVE);
+	GetScreenSize(&win.width, &win.height);
+    initgraph(win.width, win.height, EX_NOCLOSE | EX_NOMINIMIZE);
+    win.hwnd = GetHWnd();
+    //è®¾ç½®æ— è¾¹æ¡†
+    SetWindowLongPtrA(win.hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+    //è®¾ç½®çª—å£é€æ˜
+    //1.è®¾ç½®åˆ†å±‚çª—å£
+    SetWindowLongPtrA(win.hwnd, GWL_EXSTYLE,
+        GetWindowLongPtrA(win.hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);
+    //2.è®¾ç½®é€æ˜è‰²ï¼Œå¡«å……é€æ˜è‰²
+    SetLayeredWindowAttributes(win.hwnd, RGB(1, 1, 1), 0, LWA_COLORKEY);
+    setbkcolor(RGB(1, 1, 1));//ç”¨ä¸å¸¸ç”¨é¢œè‰²ä½œä¸ºé€æ˜è‰²
+    cleardevice();
+    //çª—å£ç½®é¡¶
+    SetWindowPos(win.hwnd, HWND_TOPMOST, 0, 0, win.width, win.height, SWP_NOMOVE);
 }
 
-//ÉèÖÃÄ¬ÈÏÍ¼Ïñ£¬ÓÃÓÚÓ¦¶ÔÍ¼Æ¬ÎŞ·¨¼ÓÔØµÄÇé¿ö£¬Ö®ºóÔÙĞ´
+
+//è®¾ç½®é»˜è®¤å›¾åƒï¼Œç”¨äºåº”å¯¹å›¾ç‰‡æ— æ³•åŠ è½½çš„æƒ…å†µï¼Œä¹‹åå†å†™
 void DrawDefaultImages()
 {
 
@@ -84,12 +85,12 @@ void DrawDefaultImages()
 
 void LoadImages()
 {
-	loadimage(&imgNormal, _T("normal.png"), 200, 200, true);
-	loadimage(&imgSleep, _T("sleep.png"), 200, 200, true);
-	loadimage(&imgClick, _T("click.png"), 200, 200, true);
-	loadimage(&imgDrag, _T("drag.png"), 200, 200, true);
-	loadimage(&imgLongpress, _T("longpress.png"), 200, 200, true);
-	loadimage(&imgKeyboard, _T("keyboard.png"), 200, 200, true);
+	loadimage(&imgNormal, _T("normal.png"), pet.width, pet.height, true);
+	loadimage(&imgSleep, _T("sleep.png"), pet.width, pet.height, true);
+	loadimage(&imgClick, _T("click.png"), pet.width, pet.height, true);
+	loadimage(&imgDrag, _T("drag.png"), pet.width, pet.height, true);
+	loadimage(&imgLongpress, _T("longpress.png"), pet.width, pet.height, true);
+	loadimage(&imgKeyboard, _T("keyboard.png"), pet.width, pet.height, true);
 }
 void DrawPet()
 {
@@ -115,11 +116,11 @@ void DrawPet()
 			currentImg = &imgKeyboard;
 			break;
 	}
-	putimage(100, 100, currentImg);
+	putimage(pet.x, pet.y, currentImg);
 	
 }
 
-//×Ô¶¯¸üĞÂ£¬ÊµÏÖ½»»¥ºó»Ö¸´´ı»ú×´Ì¬
+//è‡ªåŠ¨æ›´æ–°ï¼Œå®ç°äº¤äº’åæ¢å¤å¾…æœºçŠ¶æ€
 void UpdatePet()
 {
 	pet.stateTimer++;
@@ -130,7 +131,7 @@ void UpdatePet()
 		case DRAG:
 		case SLEEP:
 		case KEYBOARD:
-			if (pet.stateTimer > 60)//×´Ì¬³ÖĞøÒ»¶ÎÊ±¼äºó¾Í»Ö¸´´ı»ú
+			if (pet.stateTimer > 60)//çŠ¶æ€æŒç»­ä¸€æ®µæ—¶é—´åå°±æ¢å¤å¾…æœº
 			{
 				pet.state = NORMAL;
 				pet.stateTimer = 0;
@@ -139,7 +140,7 @@ void UpdatePet()
 }
 
 
-//²âÊÔº¯Êı£¬ÕıÊ½°æÉ¾³ı£¬°´ÏÂ1-6¿ÉÏÔÊ¾¶ÔÓ¦6ÖÖÍ¼Ïñ
+//æµ‹è¯•å‡½æ•°ï¼Œæ­£å¼ç‰ˆåˆ é™¤ï¼ŒæŒ‰ä¸‹1-6å¯æ˜¾ç¤ºå¯¹åº”6ç§å›¾åƒ
 void Test()
 {
     if (GetAsyncKeyState('1') & 0x8000)
@@ -199,3 +200,4 @@ int main()
 	closegraph();
 	return 0;
 }
+
