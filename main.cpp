@@ -6,6 +6,7 @@
 #include <string>
 #include <sstream>
 
+#define N 9
 
 typedef enum
 {
@@ -17,15 +18,27 @@ typedef enum
 	KEYBOARD
 }PetState;
 
-typedef struct
+typedef struct Pet
 {
 	int x, y;
 	int height, width;
 	PetState state;
 	int stateTimer;
+	IMAGE img[2];
+	int currentFrame;
+	int frames;
+	int frameStart;
+	int frameTime;
+	int frameDelay;
+	int Speed;
+	int offX;
+	int offY;
+	IMAGE relaxImg[N];
+	bool isRelaxing;
+	bool isDragging;
 }Pet;
 
-typedef struct
+typedef struct Window
 {
     int height, width;
     HWND hwnd;
@@ -40,6 +53,16 @@ IMAGE imgDrag;
 IMAGE imgLongpress;
 IMAGE imgKeyboard;
 
+// 待机动画相关变量
+static int frameIndex = 0;
+static DWORD lastTime = clock();
+
+// 帧率控制
+
+const int targetFPS = 60;
+const int frameDelay = 1000 / targetFPS;
+
+
 void GetScreenSize(int* width,int* height)
 {
 	*width = GetSystemMetrics(SM_CXSCREEN);
@@ -49,136 +72,193 @@ void GetScreenSize(int* width,int* height)
 void InitPet()
 {
 	GetScreenSize(&win.width, &win.height);
-	pet.width = 200;
-	pet.height = 200;
+	pet.width = 113;
+	pet.height = 144;
 	pet.x = win.width - pet.width;
 	pet.y = win.height - pet.height;
 	pet.state = NORMAL;
 	pet.stateTimer = 0;
+	pet.currentFrame = 0;
+	pet.frames = 6;
+	pet.isDragging = false;
+	pet.offX = 0;
+	pet.offY = 0;
+	pet.Speed = 400;
+	pet.frameDelay = 1000 / 60;
+
 }
 
 void InitWindow()
 {
 	GetScreenSize(&win.width, &win.height);
-    initgraph(win.width, win.height, EX_NOCLOSE | EX_NOMINIMIZE);
-    win.hwnd = GetHWnd();
-    //设置无边框
-    SetWindowLongPtrA(win.hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
-    //设置窗口透明
-    //1.设置分层窗口
-    SetWindowLongPtrA(win.hwnd, GWL_EXSTYLE,
-        GetWindowLongPtrA(win.hwnd, GWL_EXSTYLE) | WS_EX_LAYERED);
-    //2.设置透明色，填充透明色
-    SetLayeredWindowAttributes(win.hwnd, RGB(1, 1, 1), 0, LWA_COLORKEY);
-    setbkcolor(RGB(1, 1, 1));//用不常用颜色作为透明色
-    cleardevice();
-    //窗口置顶
-    SetWindowPos(win.hwnd, HWND_TOPMOST, 0, 0, win.width, win.height, SWP_NOMOVE);
+	initgraph(win.width, win.height, EX_NOCLOSE | EX_NOMINIMIZE);
+	win.hwnd = GetHWnd();
+	//窗口置顶
+	SetWindowPos(win.hwnd, HWND_TOPMOST, 0, 0, win.width, win.height, SWP_NOMOVE);
+	//无边框+透明
+	SetWindowLong(win.hwnd, GWL_STYLE,
+		GetWindowLong(win.hwnd, GWL_STYLE) & ~WS_CAPTION & ~WS_SYSMENU);
+	SetWindowLong(win.hwnd, GWL_EXSTYLE,
+		GetWindowLong(win.hwnd, GWL_EXSTYLE) | WS_EX_LAYERED | WS_EX_TOPMOST);
+	SetLayeredWindowAttributes(win.hwnd, RGB(0, 0, 0), 0, LWA_COLORKEY);
 }
 
-
-//设置默认图像，用于应对图片无法加载的情况，之后再写
-void DrawDefaultImages()
+void LoadPetImages(Pet* pet)
 {
+	loadimage(&pet->img[0], _T("IMG_Default.png"), pet->width, pet->height);
+	loadimage(&pet->img[1], _T("IMG_IsDragging.png"), pet->width, pet->height);
 
-}
-
-void LoadImages()
-{
-	loadimage(&imgNormal, _T("normal.png"), pet.width, pet.height, true);
-	loadimage(&imgSleep, _T("sleep.png"), pet.width, pet.height, true);
-	loadimage(&imgClick, _T("click.png"), pet.width, pet.height, true);
-	loadimage(&imgDrag, _T("drag.png"), pet.width, pet.height, true);
-	loadimage(&imgLongpress, _T("longpress.png"), pet.width, pet.height, true);
-	loadimage(&imgKeyboard, _T("keyboard.png"), pet.width, pet.height, true);
-}
-void DrawPet()
-{
-	IMAGE* currentImg=NULL;
-	switch (pet.state)
+	for (int index = 0; index < N; index++)
 	{
-		case NORMAL:
-			currentImg = &imgNormal;
-			break;
-		case SLEEP:
-			currentImg = &imgSleep;
-			break;
-		case CLICK:
-			currentImg = &imgClick;
-			break;
-		case DRAG:
-			currentImg = &imgDrag;
-			break;
-		case LONGPRESS:
-			currentImg = &imgLongpress;
-			break;
-		case KEYBOARD:
-			currentImg = &imgKeyboard;
-			break;
+		wchar_t path[100] = { 0 };
+		swprintf_s(path, L"Frame%d.png", index + 1);
+		loadimage(&pet->relaxImg[index], path, pet->width, pet->height);
 	}
-	putimage(pet.x, pet.y, currentImg);
-	
 }
 
-//自动更新，实现交互后恢复待机状态
-void UpdatePet()
+void HandleDragging(Pet* pet, MOUSEMSG msg)
 {
-	pet.stateTimer++;
-	switch (pet.state)
+	switch (msg.uMsg)
 	{
-		case CLICK:
-		case LONGPRESS:
-		case DRAG:
-		case SLEEP:
-		case KEYBOARD:
-			if (pet.stateTimer > 60)//状态持续一段时间后就恢复待机
-			{
-				pet.state = NORMAL;
-				pet.stateTimer = 0;
-			}
+	case WM_LBUTTONDOWN:
+	{
+		// 修正：计算宠物的矩形区域
+		int left = pet->x - pet->width / 2;
+		int right = pet->x + pet->width / 2;
+		int top = pet->y - pet->height / 2;    // 注意：这是上边界（y值小）
+		int bottom = pet->y + pet->height / 2; // 注意：这是下边界（y值大）
+
+		// 检查鼠标是否在宠物区域内
+		if (msg.x >= left && msg.x <= right &&
+			msg.y >= top && msg.y <= bottom)
+		{
+			pet->isDragging = true;
+			pet->offX = msg.x - pet->x;
+			pet->offY = msg.y - pet->y;
+		}
+		break;
+	}
+
+	case WM_MOUSEMOVE:
+	{
+		if (pet->isDragging)
+		{
+			// 更新宠物位置，减去偏移量使得鼠标在点击位置
+			pet->x = msg.x - pet->offX;
+			pet->y = msg.y - pet->offY;
+		}
+		break;
+	}
+
+	case WM_LBUTTONUP:
+	{
+		if (pet->isDragging)
+		{
+			pet->isDragging = false;
+		}
+		break;
+	}
 	}
 }
 
 
-//测试函数，正式版删除，按下1-6可显示对应6种图像
-void Test()
-{
-    if (GetAsyncKeyState('1') & 0x8000)
-    {
-        pet.state = NORMAL;
-        pet.stateTimer = 0;
-    }
 
-    if (GetAsyncKeyState('2') & 0x8000)
-    {
-        pet.state = SLEEP;
-        pet.stateTimer = 0;
-    }
+//void LoadImages()
+//{
+//	loadimage(&imgNormal, _T("normal.png"), pet.width, pet.height, true);
+//	loadimage(&imgSleep, _T("sleep.png"), pet.width, pet.height, true);
+//	loadimage(&imgClick, _T("click.png"), pet.width, pet.height, true);
+//	loadimage(&imgDrag, _T("drag.png"), pet.width, pet.height, true);
+//	loadimage(&imgLongpress, _T("longpress.png"), pet.width, pet.height, true);
+//	loadimage(&imgKeyboard, _T("keyboard.png"), pet.width, pet.height, true);
+//}
+//void DrawPet()
+//{
+//	IMAGE* currentImg=NULL;
+//	switch (pet.state)
+//	{
+//		case NORMAL:
+//			currentImg = &imgNormal;
+//			break;
+//		case SLEEP:
+//			currentImg = &imgSleep;
+//			break;
+//		case CLICK:
+//			currentImg = &imgClick;
+//			break;
+//		case DRAG:
+//			currentImg = &imgDrag;
+//			break;
+//		case LONGPRESS:
+//			currentImg = &imgLongpress;
+//			break;
+//		case KEYBOARD:
+//			currentImg = &imgKeyboard;
+//			break;
+//	}
+//	putimage(pet.x, pet.y, currentImg);
+//	
+//}
+//
+////自动更新，实现交互后恢复待机状态
+//void UpdatePet()
+//{
+//	pet.stateTimer++;
+//	switch (pet.state)
+//	{
+//		case CLICK:
+//		case LONGPRESS:
+//		case DRAG:
+//		case SLEEP:
+//		case KEYBOARD:
+//			if (pet.stateTimer > 60)//状态持续一段时间后就恢复待机
+//			{
+//				pet.state = NORMAL;
+//				pet.stateTimer = 0;
+//			}
+//	}
+//}
 
-    if (GetAsyncKeyState('3') & 0x8000)
-    {
-        pet.state = CLICK;
-        pet.stateTimer = 0;
-    }
 
-    if (GetAsyncKeyState('4') & 0x8000)
-    {
-        pet.state = LONGPRESS;
-        pet.stateTimer = 0;
-    }
-
-    if (GetAsyncKeyState('5') & 0x8000)
-    {
-        pet.state = DRAG;
-        pet.stateTimer = 0;
-    }
-
-    if (GetAsyncKeyState('6') & 0x8000)
-    {
-        pet.state = KEYBOARD;
-        pet.stateTimer = 0;
-    }
-}
+////测试函数，正式版删除，按下1-6可显示对应6种图像
+//void Test()
+//{
+//    if (GetAsyncKeyState('1') & 0x8000)
+//    {
+//        pet.state = NORMAL;
+//        pet.stateTimer = 0;
+//    }
+//
+//    if (GetAsyncKeyState('2') & 0x8000)
+//    {
+//        pet.state = SLEEP;
+//        pet.stateTimer = 0;
+//    }
+//
+//    if (GetAsyncKeyState('3') & 0x8000)
+//    {
+//        pet.state = CLICK;
+//        pet.stateTimer = 0;
+//    }
+//
+//    if (GetAsyncKeyState('4') & 0x8000)
+//    {
+//        pet.state = LONGPRESS;
+//        pet.stateTimer = 0;
+//    }
+//
+//    if (GetAsyncKeyState('5') & 0x8000)
+//    {
+//        pet.state = DRAG;
+//        pet.stateTimer = 0;
+//    }
+//
+//    if (GetAsyncKeyState('6') & 0x8000)
+//    {
+//        pet.state = KEYBOARD;
+//        pet.stateTimer = 0;
+//    }
+//}
 
 
 
@@ -186,15 +266,47 @@ int main()
 {
 	InitPet();
 	InitWindow();
-	LoadImages();
-	while (1)
+
+	LoadPetImages(&pet);
+
+	while (true)
 	{
-		Test();
-		
-		DrawPet();
-		UpdatePet();
-		
-		Sleep(8);
+
+
+		// 处理鼠标消息
+		if (MouseHit())
+		{
+			MOUSEMSG msg = GetMouseMsg();
+			HandleDragging(&pet, msg);
+		}
+
+		// 双缓冲开始
+		BeginBatchDraw();
+
+		// 清屏
+		cleardevice();
+
+		// 根据状态绘制宠物
+		if (pet.isDragging)
+		{
+			// 拖拽时显示拖拽图像
+			putimage(pet.x - pet.width / 2,
+				pet.y - pet.height / 2,
+				&pet.img[1]);
+		}
+		else
+		{
+			// 待机时播放待机动画
+			DWORD currentTime = clock();
+			if (currentTime - lastTime > 1000 / N) {
+				frameIndex = (frameIndex + 1) % N;
+				lastTime = currentTime;
+			}
+			putimage(pet.x - pet.width / 2,
+				pet.y - pet.height / 2,
+				&pet.relaxImg[frameIndex]);
+		}
+		EndBatchDraw();
 	}
 	
 	closegraph();
